@@ -91,6 +91,11 @@ export default function PoemDisplay({
     let lastEnd = 0;
 
     sortedComments.forEach((comment, index) => {
+      // Skip if this comment overlaps with already-rendered text
+      if (comment.start_offset < lastEnd) {
+        return;
+      }
+
       // Add text before this comment
       if (comment.start_offset > lastEnd) {
         elements.push(
@@ -100,12 +105,17 @@ export default function PoemDisplay({
         );
       }
 
-      // Add highlighted text
+      // Add highlighted text with all comments on this range
+      const overlappingComments = sortedComments.filter(
+        (c) => c.start_offset === comment.start_offset && c.end_offset === comment.end_offset
+      );
+      const tooltipText = overlappingComments.map((c) => c.comment).join('\n\n---\n\n');
+
       elements.push(
         <span
           key={`highlight-${comment.id}`}
           className="highlight-comment"
-          title={comment.comment}
+          title={tooltipText}
         >
           {content.slice(comment.start_offset, comment.end_offset)}
         </span>

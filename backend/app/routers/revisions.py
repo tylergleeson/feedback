@@ -58,13 +58,13 @@ async def review_revision(
         # Use edited version if provided
         final_changes = review.edited_guide_changes if review.edited_guide_changes else revision.proposed_guide_changes
 
-        # Apply guide changes - append to current guide
+        # Apply guide changes - intelligently merge with current guide
         current_content, _ = await guide_service.get_current_guide(db)
-        new_content = current_content + "\n\n" + final_changes
+        new_content = await guide_service.merge_guide_changes(current_content, final_changes)
         await guide_service.update_guide(
             db,
             new_content,
-            f"Applied changes from revision #{revision_id}"
+            f"Merged changes from revision #{revision_id}"
         )
     elif review.accept_guide_changes is False:
         revision.guide_changes_accepted = -1

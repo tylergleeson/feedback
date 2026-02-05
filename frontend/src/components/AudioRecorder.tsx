@@ -1,4 +1,3 @@
-import React from 'react';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 
 interface AudioRecorderProps {

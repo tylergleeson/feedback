@@ -10,9 +10,14 @@ import {
   useSubmitFeedback,
   useProcessFeedback,
 } from '../hooks/useFeedback';
+import {
+  useStartVoiceFeedback,
+  useVoiceSession,
+} from '../hooks/useVoiceFeedback';
 import PoemDisplay from '../components/PoemDisplay';
 import FeedbackSidebar from '../components/FeedbackSidebar';
-import type { FeedbackSession } from '../types';
+import { VoiceFeedbackButton, VoiceFeedbackModal } from '../components/VoiceFeedback';
+import type { FeedbackSession, VoiceFeedbackSession } from '../types';
 
 export default function PoemReview() {
   const { id } = useParams<{ id: string }>();
@@ -28,15 +33,27 @@ export default function PoemReview() {
   const processFeedback = useProcessFeedback();
 
   const [activeSession, setActiveSession] = useState<FeedbackSession | null>(null);
+  const [voiceSession, setVoiceSession] = useState<VoiceFeedbackSession | null>(null);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+
   const { data: sessionData, refetch: refetchSession } = useFeedbackSession(
     activeSession?.id || 0
   );
+
+  const startVoiceFeedback = useStartVoiceFeedback();
+  const { data: voiceSessionData } = useVoiceSession(voiceSession?.id || null);
 
   useEffect(() => {
     if (sessionData) {
       setActiveSession(sessionData);
     }
   }, [sessionData]);
+
+  useEffect(() => {
+    if (voiceSessionData) {
+      setVoiceSession(voiceSessionData);
+    }
+  }, [voiceSessionData]);
 
   useEffect(() => {
     if (poem?.feedback_sessions?.length) {
@@ -130,6 +147,34 @@ export default function PoemReview() {
     }
   };
 
+  const handleStartVoiceFeedback = async () => {
+    try {
+      const session = await startVoiceFeedback.mutateAsync(poemId);
+      setVoiceSession(session);
+      setActiveSession({
+        id: session.feedback_session_id,
+        poem_id: poemId,
+        overall_feedback: null,
+        rating: null,
+        status: 'in_progress',
+        created_at: session.created_at,
+        comments: [],
+      });
+      setShowVoiceModal(true);
+    } catch (error) {
+      console.error('Failed to start voice feedback:', error);
+    }
+  };
+
+  const handleVoiceFeedbackConfirmed = () => {
+    // Refresh the session data to show the confirmed feedback
+    refetchSession();
+  };
+
+  const handleCloseVoiceModal = () => {
+    setShowVoiceModal(false);
+  };
+
   if (poemLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -167,7 +212,7 @@ export default function PoemReview() {
           </div>
 
           {!activeSession && (
-            <div className="mt-8 pt-6 border-t border-gray-100">
+            <div className="mt-8 pt-6 border-t border-gray-100 flex gap-4">
               <button
                 onClick={handleStartFeedback}
                 disabled={startFeedback.isPending}
@@ -175,6 +220,10 @@ export default function PoemReview() {
               >
                 {startFeedback.isPending ? 'Starting...' : 'Start Review'}
               </button>
+              <VoiceFeedbackButton
+                onClick={handleStartVoiceFeedback}
+                isLoading={startVoiceFeedback.isPending}
+              />
             </div>
           )}
         </div>
@@ -189,6 +238,15 @@ export default function PoemReview() {
           onProcess={handleProcess}
           isSubmitting={submitFeedback.isPending}
           isProcessing={processFeedback.isPending}
+        />
+      )}
+
+      {showVoiceModal && voiceSession && poem && (
+        <VoiceFeedbackModal
+          session={voiceSession}
+          poem={poem}
+          onClose={handleCloseVoiceModal}
+          onConfirmed={handleVoiceFeedbackConfirmed}
         />
       )}
     </div>

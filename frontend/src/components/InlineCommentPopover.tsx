@@ -167,10 +167,10 @@ export default function InlineCommentPopover({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!comment.trim()}
+              disabled={!comment.trim() || isTranscribing}
               className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
             >
-              Add Comment
+              {isTranscribing ? 'Transcribing...' : 'Add Comment'}
             </button>
           </div>
         </div>

@@ -209,10 +209,10 @@ export default function FeedbackSidebar({
             {isInProgress && (
               <button
                 onClick={onSubmit}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isTranscribing}
                 className="w-full py-2 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
               >
-                {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
+                {isTranscribing ? 'Transcribing...' : isSubmitting ? 'Submitting...' : 'Submit Feedback'}
               </button>
             )}
 

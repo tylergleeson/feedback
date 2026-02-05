@@ -1,5 +1,9 @@
 export type PoemStatus = 'draft' | 'under_review' | 'revised' | 'accepted';
 export type FeedbackStatus = 'in_progress' | 'submitted' | 'processed';
+export type VoiceSessionStatus = 'active' | 'completed' | 'cancelled';
+export type MessageRole = 'sme' | 'ai';
+export type FeedbackType = 'inline_comment' | 'overall' | 'guide_suggestion' | 'rating';
+export type ConfirmationStatus = 'pending' | 'confirmed' | 'rejected';
 
 export interface Guide {
   content: string;
@@ -57,4 +61,34 @@ export interface Revision {
   poem_accepted: number;
   guide_changes_accepted: number;
   created_at: string;
+}
+
+export interface ConversationMessage {
+  id: number;
+  role: MessageRole;
+  content: string;
+  audio_url?: string | null;
+  created_at: string;
+}
+
+export interface ExtractedFeedback {
+  id: number;
+  feedback_type: FeedbackType;
+  content: string;
+  highlighted_text?: string | null;
+  start_offset?: number | null;
+  end_offset?: number | null;
+  confidence: number;
+  confirmation_status: ConfirmationStatus;
+  created_at: string;
+}
+
+export interface VoiceFeedbackSession {
+  id: number;
+  feedback_session_id: number;
+  status: VoiceSessionStatus;
+  created_at: string;
+  completed_at?: string | null;
+  messages: ConversationMessage[];
+  extracted_feedback: ExtractedFeedback[];
 }

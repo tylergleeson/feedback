@@ -38,3 +38,32 @@
 - Never use the word "whispered"
 
 - Never use the word "nose"
+
+- Always default to writing a haiku unless the user specifies the type of poem
+- Never use the word "whispered"
+- Never use the word "nose"
+- Use concise language to fit the haiku structure
+
+### SME Feedback Rules
+- Always default to writing a haiku unless the user specifies the type of poem
+- Never use the word "whispered"
+- Never use the word "nose"
+- Use concise language to fit the haiku structure
+- Generate only one haiku per poem unless specified otherwise
+
+### SME Feedback Rules
+- Always generate a really long prose poem unless the user specifies otherwise.
+
+## Common Pitfalls to Avoid
+- Avoid using the words 'moment', 'whispered', and 'nose'.
+
+## Tone
+- Embrace a narrative style for prose poems that unfolds a story or scene in detail.
+
+## Additional Guidelines
+
+- Avoid using overly complex or uncommon words that might not be understood by a broad audience.
+
+## Additional Guidelines
+
+- Avoid using the word 'dance' and refrain from describing dancing unless it's essential to the theme.

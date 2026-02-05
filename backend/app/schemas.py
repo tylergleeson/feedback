@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
-from app.models import PoemStatus, FeedbackStatus
+from app.models import PoemStatus, FeedbackStatus, VoiceSessionStatus, MessageRole, FeedbackType, ConfirmationStatus
 
 
 # Guide schemas
@@ -109,6 +109,55 @@ class RevisionReview(BaseModel):
     accept_guide_changes: bool
     edited_poem: Optional[str] = None
     edited_guide_changes: Optional[str] = None
+
+
+# Voice feedback schemas
+class ConversationMessageResponse(BaseModel):
+    id: int
+    role: MessageRole
+    content: str
+    audio_url: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ExtractedFeedbackResponse(BaseModel):
+    id: int
+    feedback_type: FeedbackType
+    content: str
+    highlighted_text: Optional[str] = None
+    start_offset: Optional[int] = None
+    end_offset: Optional[int] = None
+    confidence: float
+    confirmation_status: ConfirmationStatus
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class VoiceFeedbackSessionResponse(BaseModel):
+    id: int
+    feedback_session_id: int
+    status: VoiceSessionStatus
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    messages: List[ConversationMessageResponse] = []
+    extracted_feedback: List[ExtractedFeedbackResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class VoiceMessageRequest(BaseModel):
+    text: Optional[str] = None
+
+
+class ConfirmFeedbackRequest(BaseModel):
+    confirmed_ids: List[int]
+    rejected_ids: List[int]
 
 
 # Update forward references
