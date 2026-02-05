@@ -52,6 +52,7 @@ class InlineCommentCreate(BaseModel):
     start_offset: int
     end_offset: int
     comment: str
+    audio_path: Optional[str] = None
 
 
 class InlineCommentResponse(BaseModel):
@@ -60,6 +61,7 @@ class InlineCommentResponse(BaseModel):
     start_offset: int
     end_offset: int
     comment: str
+    comment_audio_url: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -71,6 +73,7 @@ class FeedbackSessionResponse(BaseModel):
     id: int
     poem_id: int
     overall_feedback: Optional[str]
+    overall_feedback_audio_url: Optional[str] = None
     rating: Optional[int]
     status: FeedbackStatus
     created_at: datetime

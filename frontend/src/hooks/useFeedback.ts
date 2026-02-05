@@ -46,6 +46,7 @@ export function useAddComment() {
         start_offset: number;
         end_offset: number;
         comment: string;
+        audio_path?: string;
       };
     }) => {
       const res = await fetch(`${API_BASE}/feedback/${sessionId}/comment`, {

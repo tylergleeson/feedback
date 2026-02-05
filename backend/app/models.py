@@ -47,6 +47,7 @@ class FeedbackSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     poem_id = Column(Integer, ForeignKey("poems.id"), nullable=False)
     overall_feedback = Column(Text, nullable=True)
+    overall_feedback_audio_path = Column(String, nullable=True)
     rating = Column(Integer, nullable=True)
     status = Column(Enum(FeedbackStatus), default=FeedbackStatus.in_progress)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -65,6 +66,7 @@ class InlineComment(Base):
     start_offset = Column(Integer, nullable=False)
     end_offset = Column(Integer, nullable=False)
     comment = Column(Text, nullable=False)
+    comment_audio_path = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     session = relationship("FeedbackSession", back_populates="comments")

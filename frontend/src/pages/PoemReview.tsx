@@ -58,7 +58,8 @@ export default function PoemReview() {
     highlightedText: string,
     startOffset: number,
     endOffset: number,
-    comment: string
+    comment: string,
+    audioPath?: string
   ) => {
     if (!activeSession) return;
 
@@ -70,6 +71,7 @@ export default function PoemReview() {
           start_offset: startOffset,
           end_offset: endOffset,
           comment,
+          audio_path: audioPath,
         },
       });
       refetchSession();
@@ -157,6 +159,7 @@ export default function PoemReview() {
             <PoemDisplay
               content={poem.content}
               comments={activeSession?.comments || []}
+              sessionId={activeSession?.id}
               onAddComment={
                 activeSession?.status === 'in_progress' ? handleAddComment : undefined
               }

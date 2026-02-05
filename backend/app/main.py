@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from pathlib import Path
 from app.database import init_db
 from app.routers import guide, poems, feedback, revisions
 
@@ -30,6 +32,11 @@ app.include_router(guide.router)
 app.include_router(poems.router)
 app.include_router(feedback.router)
 app.include_router(revisions.router)
+
+# Setup static file serving for audio files
+upload_dir = Path("uploads/audio")
+upload_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/api/audio", StaticFiles(directory="uploads/audio"), name="audio")
 
 
 @app.get("/")

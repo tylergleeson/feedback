@@ -1,19 +1,30 @@
 import { useState, useRef, useEffect } from 'react';
+import { AudioRecorder } from './AudioRecorder';
 
 interface InlineCommentPopoverProps {
   selectedText: string;
   rect: DOMRect;
-  onSubmit: (comment: string) => void;
+  startOffset: number;
+  endOffset: number;
+  sessionId: number;
+  onSubmit: (comment: string, audioPath?: string) => void;
   onClose: () => void;
 }
 
 export default function InlineCommentPopover({
   selectedText,
   rect,
+  startOffset,
+  endOffset,
+  sessionId,
   onSubmit,
   onClose,
 }: InlineCommentPopoverProps) {
   const [comment, setComment] = useState('');
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [audioPath, setAudioPath] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -45,7 +56,39 @@ export default function InlineCommentPopover({
 
   const handleSubmit = () => {
     if (comment.trim()) {
-      onSubmit(comment.trim());
+      onSubmit(comment.trim(), audioPath || undefined);
+    }
+  };
+
+  const handleAudioTranscription = async (_: string, audioBlob: Blob) => {
+    setIsTranscribing(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('audio_file', audioBlob, 'recording.webm');
+      formData.append('highlighted_text', selectedText);
+      formData.append('start_offset', startOffset.toString());
+      formData.append('end_offset', endOffset.toString());
+
+      const response = await fetch(`http://localhost:8000/api/feedback/${sessionId}/transcribe-comment`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Transcription failed');
+      }
+
+      const data = await response.json();
+      setComment(data.transcription);
+      setAudioPath(data.audio_path);
+      setAudioUrl(`http://localhost:8000/api/audio/${data.audio_path}`);
+      setShowAudioRecorder(false);
+    } catch (error) {
+      console.error('Transcription error:', error);
+      alert('Failed to transcribe audio. Please try again.');
+    } finally {
+      setIsTranscribing(false);
     }
   };
 
@@ -73,15 +116,48 @@ export default function InlineCommentPopover({
           </p>
         </div>
         <div className="p-4">
-          <textarea
-            ref={textareaRef}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Add your comment..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-            rows={3}
-          />
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-xs font-medium text-gray-700">Comment</label>
+            {!showAudioRecorder && (
+              <button
+                onClick={() => setShowAudioRecorder(true)}
+                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+              >
+                🎤 Record
+              </button>
+            )}
+          </div>
+
+          {showAudioRecorder ? (
+            <AudioRecorder
+              onTranscriptionComplete={handleAudioTranscription}
+              onCancel={() => setShowAudioRecorder(false)}
+              isTranscribing={isTranscribing}
+            />
+          ) : (
+            <>
+              <textarea
+                ref={textareaRef}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Add your comment..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                rows={3}
+              />
+              {audioUrl && (
+                <div className="mt-2">
+                  <audio
+                    controls
+                    src={audioUrl}
+                    className="w-full"
+                    style={{ height: '32px' }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+
           <div className="flex justify-end gap-2 mt-3">
             <button
               onClick={onClose}

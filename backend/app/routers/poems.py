@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.database import get_db
-from app.models import Poem, PoemStatus
+from app.models import Poem, PoemStatus, FeedbackSession
 from app.schemas import PoemGenerate, PoemResponse, PoemWithFeedback
 from app.services import guide_service
 from app.services.ai_poet import generate_poem
@@ -52,7 +52,7 @@ async def get_poem(poem_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Poem)
         .options(
-            selectinload(Poem.feedback_sessions)
+            selectinload(Poem.feedback_sessions).selectinload(FeedbackSession.comments)
         )
         .where(Poem.id == poem_id)
     )

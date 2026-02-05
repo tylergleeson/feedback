@@ -5,17 +5,20 @@ import InlineCommentPopover from './InlineCommentPopover';
 interface PoemDisplayProps {
   content: string;
   comments: InlineComment[];
+  sessionId?: number;
   onAddComment?: (
     highlightedText: string,
     startOffset: number,
     endOffset: number,
-    comment: string
+    comment: string,
+    audioPath?: string
   ) => void;
 }
 
 export default function PoemDisplay({
   content,
   comments,
+  sessionId,
   onAddComment,
 }: PoemDisplayProps) {
   const [selection, setSelection] = useState<{
@@ -62,9 +65,9 @@ export default function PoemDisplay({
     });
   }, [onAddComment]);
 
-  const handleAddComment = (comment: string) => {
+  const handleAddComment = (comment: string, audioPath?: string) => {
     if (selection && onAddComment) {
-      onAddComment(selection.text, selection.startOffset, selection.endOffset, comment);
+      onAddComment(selection.text, selection.startOffset, selection.endOffset, comment, audioPath);
       setSelection(null);
       window.getSelection()?.removeAllRanges();
     }
@@ -129,10 +132,13 @@ export default function PoemDisplay({
         {renderContent()}
       </div>
 
-      {selection && onAddComment && (
+      {selection && onAddComment && sessionId && (
         <InlineCommentPopover
           selectedText={selection.text}
           rect={selection.rect}
+          startOffset={selection.startOffset}
+          endOffset={selection.endOffset}
+          sessionId={sessionId}
           onSubmit={handleAddComment}
           onClose={handleClosePopover}
         />

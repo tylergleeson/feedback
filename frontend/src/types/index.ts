@@ -32,6 +32,7 @@ export interface InlineComment {
   start_offset: number;
   end_offset: number;
   comment: string;
+  comment_audio_url?: string | null;
   created_at: string;
 }
 
@@ -39,6 +40,7 @@ export interface FeedbackSession {
   id: number;
   poem_id: number;
   overall_feedback: string | null;
+  overall_feedback_audio_url?: string | null;
   rating: number | null;
   status: FeedbackStatus;
   created_at: string;

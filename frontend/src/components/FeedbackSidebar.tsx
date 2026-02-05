@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { FeedbackSession } from '../types';
+import { AudioRecorder } from './AudioRecorder';
 
 interface FeedbackSidebarProps {
   session: FeedbackSession;
@@ -22,10 +23,16 @@ export default function FeedbackSidebar({
 }: FeedbackSidebarProps) {
   const [feedback, setFeedback] = useState(session.overall_feedback || '');
   const [rating, setRating] = useState(session.rating || 0);
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [feedbackAudioUrl, setFeedbackAudioUrl] = useState<string | null>(
+    session.overall_feedback_audio_url || null
+  );
 
   useEffect(() => {
     setFeedback(session.overall_feedback || '');
     setRating(session.rating || 0);
+    setFeedbackAudioUrl(session.overall_feedback_audio_url || null);
   }, [session]);
 
   const handleFeedbackBlur = () => {
@@ -37,6 +44,35 @@ export default function FeedbackSidebar({
   const handleRatingChange = (newRating: number) => {
     setRating(newRating);
     onUpdateFeedback({ rating: newRating });
+  };
+
+  const handleAudioTranscription = async (_: string, audioBlob: Blob) => {
+    setIsTranscribing(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('audio_file', audioBlob, 'recording.webm');
+
+      const response = await fetch(`http://localhost:8000/api/feedback/${session.id}/transcribe-overall`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Transcription failed');
+      }
+
+      const data = await response.json();
+      setFeedback(data.transcription);
+      setFeedbackAudioUrl(data.audio_url);
+      onUpdateFeedback({ overall_feedback: data.transcription });
+      setShowAudioRecorder(false);
+    } catch (error) {
+      console.error('Transcription error:', error);
+      alert('Failed to transcribe audio. Please try again.');
+    } finally {
+      setIsTranscribing(false);
+    }
   };
 
   const isInProgress = session.status === 'in_progress';
@@ -79,18 +115,49 @@ export default function FeedbackSidebar({
 
           {/* Overall Feedback */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Overall Feedback
-            </label>
-            <textarea
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              onBlur={handleFeedbackBlur}
-              disabled={!isInProgress}
-              placeholder="Share your overall thoughts..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none disabled:bg-gray-50 disabled:text-gray-500"
-              rows={4}
-            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Overall Feedback
+              </label>
+              {isInProgress && !showAudioRecorder && (
+                <button
+                  onClick={() => setShowAudioRecorder(true)}
+                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  🎤 Record Audio
+                </button>
+              )}
+            </div>
+
+            {showAudioRecorder && isInProgress ? (
+              <AudioRecorder
+                onTranscriptionComplete={handleAudioTranscription}
+                onCancel={() => setShowAudioRecorder(false)}
+                isTranscribing={isTranscribing}
+              />
+            ) : (
+              <>
+                <textarea
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  onBlur={handleFeedbackBlur}
+                  disabled={!isInProgress}
+                  placeholder="Share your overall thoughts..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none disabled:bg-gray-50 disabled:text-gray-500"
+                  rows={4}
+                />
+                {feedbackAudioUrl && (
+                  <div className="mt-2">
+                    <audio
+                      controls
+                      src={`http://localhost:8000${feedbackAudioUrl}`}
+                      className="w-full"
+                      style={{ height: '32px' }}
+                    />
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Inline Comments */}
@@ -113,6 +180,16 @@ export default function FeedbackSidebar({
                       "{comment.highlighted_text}"
                     </p>
                     <p className="text-gray-700 mt-1">{comment.comment}</p>
+                    {comment.comment_audio_url && (
+                      <div className="mt-2">
+                        <audio
+                          controls
+                          src={`http://localhost:8000${comment.comment_audio_url}`}
+                          className="w-full"
+                          style={{ height: '28px' }}
+                        />
+                      </div>
+                    )}
                     {isInProgress && (
                       <button
                         onClick={() => onDeleteComment(comment.id)}

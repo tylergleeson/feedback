@@ -36,3 +36,5 @@
 ### SME Feedback Rules
 - Never use the word "moment"
 - Never use the word "whispered"
+
+- Never use the word "nose"

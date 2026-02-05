@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from pathlib import Path
+import uuid
+import os
 from app.database import get_db
 from app.models import Poem, FeedbackSession, InlineComment, Revision, PoemStatus, FeedbackStatus
 from app.schemas import (
@@ -10,8 +13,134 @@ from app.schemas import (
 )
 from app.services import guide_service
 from app.services.ai_reviser import generate_revision
+from app.services.whisper_service import transcribe_audio
 
 router = APIRouter(prefix="/api", tags=["feedback"])
+
+# Maximum file size: 25MB (Whisper API limit)
+MAX_AUDIO_SIZE = 25 * 1024 * 1024
+
+
+@router.post("/feedback/{session_id}/transcribe-overall")
+async def transcribe_overall_feedback(
+    session_id: int,
+    audio_file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload and transcribe audio for overall feedback."""
+    # Verify session exists and is in progress
+    result = await db.execute(
+        select(FeedbackSession).where(FeedbackSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.status != FeedbackStatus.in_progress:
+        raise HTTPException(status_code=400, detail="Cannot add audio to submitted session")
+
+    # Validate file size
+    content = await audio_file.read()
+    if len(content) > MAX_AUDIO_SIZE:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {MAX_AUDIO_SIZE / (1024 * 1024)}MB")
+
+    # Save audio file
+    upload_dir = Path("uploads/audio")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    file_uuid = str(uuid.uuid4())
+    # Get file extension from content type or filename
+    ext = ".webm"
+    if audio_file.filename:
+        ext = Path(audio_file.filename).suffix or ".webm"
+
+    filename = f"session_{session_id}_overall_{file_uuid}{ext}"
+    file_path = upload_dir / filename
+
+    try:
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # Transcribe audio
+        transcription = await transcribe_audio(str(file_path))
+
+        # Save audio path to database
+        session.overall_feedback_audio_path = filename
+        await db.commit()
+
+        return {
+            "transcription": transcription,
+            "audio_url": f"/api/audio/{filename}"
+        }
+
+    except Exception as e:
+        # Clean up file on error
+        if file_path.exists():
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+
+@router.post("/feedback/{session_id}/transcribe-comment")
+async def transcribe_comment_audio(
+    session_id: int,
+    audio_file: UploadFile = File(...),
+    highlighted_text: str = Form(...),
+    start_offset: int = Form(...),
+    end_offset: int = Form(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload and transcribe audio for inline comment."""
+    # Verify session exists and is in progress
+    result = await db.execute(
+        select(FeedbackSession).where(FeedbackSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.status != FeedbackStatus.in_progress:
+        raise HTTPException(status_code=400, detail="Cannot add audio to submitted session")
+
+    # Validate file size
+    content = await audio_file.read()
+    if len(content) > MAX_AUDIO_SIZE:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {MAX_AUDIO_SIZE / (1024 * 1024)}MB")
+
+    # Save audio file
+    upload_dir = Path("uploads/audio")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    file_uuid = str(uuid.uuid4())
+    # Get file extension from content type or filename
+    ext = ".webm"
+    if audio_file.filename:
+        ext = Path(audio_file.filename).suffix or ".webm"
+
+    filename = f"session_{session_id}_comment_{file_uuid}{ext}"
+    file_path = upload_dir / filename
+
+    try:
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # Transcribe audio
+        transcription = await transcribe_audio(str(file_path))
+
+        return {
+            "transcription": transcription,
+            "audio_path": filename,
+            "highlighted_text": highlighted_text,
+            "start_offset": start_offset,
+            "end_offset": end_offset
+        }
+
+    except Exception as e:
+        # Clean up file on error
+        if file_path.exists():
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
 @router.post("/poems/{poem_id}/feedback/start", response_model=FeedbackSessionResponse)
@@ -56,7 +185,30 @@ async def get_feedback_session(session_id: int, db: AsyncSession = Depends(get_d
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    return session
+    # Transform audio paths to URLs
+    comments_data = []
+    for comment in session.comments:
+        comment_dict = {
+            "id": comment.id,
+            "highlighted_text": comment.highlighted_text,
+            "start_offset": comment.start_offset,
+            "end_offset": comment.end_offset,
+            "comment": comment.comment,
+            "comment_audio_url": f"/api/audio/{comment.comment_audio_path}" if comment.comment_audio_path else None,
+            "created_at": comment.created_at
+        }
+        comments_data.append(InlineCommentResponse(**comment_dict))
+
+    return FeedbackSessionResponse(
+        id=session.id,
+        poem_id=session.poem_id,
+        overall_feedback=session.overall_feedback,
+        overall_feedback_audio_url=f"/api/audio/{session.overall_feedback_audio_path}" if session.overall_feedback_audio_path else None,
+        rating=session.rating,
+        status=session.status,
+        created_at=session.created_at,
+        comments=comments_data
+    )
 
 
 @router.post("/feedback/{session_id}/comment", response_model=InlineCommentResponse)
@@ -82,7 +234,8 @@ async def add_comment(
         highlighted_text=comment.highlighted_text,
         start_offset=comment.start_offset,
         end_offset=comment.end_offset,
-        comment=comment.comment
+        comment=comment.comment,
+        comment_audio_path=comment.audio_path
     )
     db.add(inline_comment)
     await db.commit()
