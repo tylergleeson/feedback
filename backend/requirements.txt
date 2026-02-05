@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy[asyncio]
+pydantic
+pydantic-settings
+python-multipart
+anthropic
+aiosqlite
+greenlet

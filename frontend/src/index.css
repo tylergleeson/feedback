@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+}
+
+.poem-text {
+  @apply whitespace-pre-wrap font-serif text-lg leading-relaxed;
+}
+
+.highlight-comment {
+  @apply bg-amber-200 cursor-pointer hover:bg-amber-300 transition-colors;
+}
