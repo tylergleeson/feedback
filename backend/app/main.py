@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from pathlib import Path
 from app.database import init_db
-from app.routers import guide, poems, feedback, revisions, voice_feedback
+from app.routers import guide, poems, feedback, revisions, voice_feedback, realtime
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.include_router(poems.router)
 app.include_router(feedback.router)
 app.include_router(revisions.router)
 app.include_router(voice_feedback.router)
+app.include_router(realtime.router)
 
 # Setup static file serving for audio files
 upload_dir = Path("uploads/audio")

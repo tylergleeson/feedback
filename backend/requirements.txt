@@ -8,3 +8,4 @@ anthropic
 aiosqlite
 greenlet
 openai
+httpx

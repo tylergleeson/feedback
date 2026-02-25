@@ -17,6 +17,8 @@ import {
 import PoemDisplay from '../components/PoemDisplay';
 import FeedbackSidebar from '../components/FeedbackSidebar';
 import { VoiceFeedbackButton, VoiceFeedbackModal } from '../components/VoiceFeedback';
+import { RealtimeCallButton, RealtimeCallModal } from '../components/RealtimeCall';
+import { useRealtimeCall } from '../hooks/useRealtimeCall';
 import type { FeedbackSession, VoiceFeedbackSession } from '../types';
 
 export default function PoemReview() {
@@ -35,6 +37,9 @@ export default function PoemReview() {
   const [activeSession, setActiveSession] = useState<FeedbackSession | null>(null);
   const [voiceSession, setVoiceSession] = useState<VoiceFeedbackSession | null>(null);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [showCallModal, setShowCallModal] = useState(false);
+
+  const realtimeCall = useRealtimeCall();
 
   const { data: sessionData, refetch: refetchSession } = useFeedbackSession(
     activeSession?.id || 0
@@ -175,6 +180,16 @@ export default function PoemReview() {
     setShowVoiceModal(false);
   };
 
+  const handleStartCall = async () => {
+    setShowCallModal(true);
+    await realtimeCall.startCall(poemId);
+  };
+
+  const handleEndCall = () => {
+    realtimeCall.endCall();
+    setShowCallModal(false);
+  };
+
   if (poemLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -224,6 +239,7 @@ export default function PoemReview() {
                 onClick={handleStartVoiceFeedback}
                 isLoading={startVoiceFeedback.isPending}
               />
+              <RealtimeCallButton onClick={handleStartCall} />
             </div>
           )}
         </div>
@@ -249,6 +265,17 @@ export default function PoemReview() {
           onConfirmed={handleVoiceFeedbackConfirmed}
         />
       )}
+
+      <RealtimeCallModal
+        isOpen={showCallModal}
+        poemContent={poem?.content || ''}
+        isConnected={realtimeCall.isConnected}
+        isConnecting={realtimeCall.isConnecting}
+        error={realtimeCall.error}
+        transcript={realtimeCall.transcript}
+        callDuration={realtimeCall.callDuration}
+        onEndCall={handleEndCall}
+      />
     </div>
   );
 }
