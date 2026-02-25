@@ -30,9 +30,12 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
 
-  // Track partial transcripts for accumulation
-  const currentUserTranscriptRef = useRef<string>('');
-  const currentAssistantTranscriptRef = useRef<string>('');
+  // Use a ref for the event handler so the data channel closure always
+  // calls the latest version without needing to re-bind.
+  const handleEventRef = useRef<(event: unknown) => void>(() => {});
+
+  // Accumulated assistant transcript between delta/done events
+  const assistantBufferRef = useRef<string>('');
 
   // Duration timer
   useEffect(() => {
@@ -63,7 +66,7 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
       pcRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
     if (audioRef.current) {
@@ -74,24 +77,71 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
     setIsConnecting(false);
   }, []);
 
+  // Cleanup on unmount to prevent leaked connections/mic streams
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
+
+  // Keep the event handler ref up to date
+  handleEventRef.current = (event: unknown) => {
+    const evt = event as Record<string, unknown>;
+    const type = evt.type as string | undefined;
+    if (!type) return;
+
+    // User finished speaking — transcription result
+    if (type === 'conversation.item.input_audio_transcription.completed') {
+      const text = (evt.transcript as string | undefined)?.trim();
+      if (text) {
+        setTranscript((prev) => [...prev, { role: 'user', text, timestamp: Date.now() }]);
+      }
+    }
+
+    // Assistant audio transcript streaming delta
+    if (type === 'response.audio_transcript.delta') {
+      assistantBufferRef.current += (evt.delta as string) || '';
+    }
+
+    // Assistant audio transcript complete
+    if (type === 'response.audio_transcript.done') {
+      const text = ((evt.transcript as string) || assistantBufferRef.current).trim();
+      if (text) {
+        setTranscript((prev) => [...prev, { role: 'assistant', text, timestamp: Date.now() }]);
+      }
+      assistantBufferRef.current = '';
+    }
+
+    // Response fully done — flush any remaining buffer
+    if (type === 'response.done') {
+      const remaining = assistantBufferRef.current.trim();
+      if (remaining) {
+        setTranscript((prev) => [...prev, { role: 'assistant', text: remaining, timestamp: Date.now() }]);
+        assistantBufferRef.current = '';
+      }
+    }
+
+    // Errors
+    if (type === 'error') {
+      const errObj = evt.error as Record<string, unknown> | undefined;
+      const msg = (errObj?.message as string) || 'Realtime API error';
+      console.error('[Realtime] Error:', errObj);
+      setError(msg);
+    }
+  };
+
   const startCall = useCallback(async (poemId: number) => {
     setError(null);
     setIsConnecting(true);
     setTranscript([]);
-    currentUserTranscriptRef.current = '';
-    currentAssistantTranscriptRef.current = '';
+    assistantBufferRef.current = '';
 
     try {
-      // 1. Get poem context + system prompt
-      const ctxResp = await fetch(`/api/realtime/context/${poemId}`);
-      if (!ctxResp.ok) throw new Error('Failed to load poem context');
-      const ctx = await ctxResp.json();
-
-      // 2. Create peer connection
+      // 1. Create peer connection
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
-      // 3. Set up remote audio playback
+      // 2. Set up remote audio playback
       const audio = document.createElement('audio');
       audio.autoplay = true;
       audioRef.current = audio;
@@ -99,12 +149,12 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
         audio.srcObject = e.streams[0];
       };
 
-      // 4. Get mic access and add track
+      // 3. Get mic access and add track
       const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = ms;
       pc.addTrack(ms.getTracks()[0]);
 
-      // 5. Set up data channel for events
+      // 4. Set up data channel for events
       const dc = pc.createDataChannel('oai-events');
       dcRef.current = dc;
 
@@ -114,24 +164,21 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
 
       dc.onmessage = (e) => {
         try {
-          const event = JSON.parse(e.data);
-          handleRealtimeEvent(event);
-        } catch {
-          // ignore non-JSON messages
+          const parsed = JSON.parse(e.data);
+          handleEventRef.current(parsed);
+        } catch (parseErr) {
+          console.warn('[Realtime] Non-JSON data channel message:', e.data);
         }
       };
 
-      // 6. Create and send SDP offer
+      // 5. Create and send SDP offer — system prompt is built server-side
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      const sdpResp = await fetch('/api/realtime/session', {
+      const sdpResp = await fetch(`/api/realtime/session/${poemId}`, {
         method: 'POST',
         body: offer.sdp,
-        headers: {
-          'Content-Type': 'application/sdp',
-          'X-System-Prompt': ctx.system_prompt,
-        },
+        headers: { 'Content-Type': 'application/sdp' },
       });
 
       if (!sdpResp.ok) {
@@ -143,62 +190,23 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
       await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'connected') {
+        const state = pc.connectionState;
+        if (state === 'connected') {
           setIsConnected(true);
           setIsConnecting(false);
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          setError('Connection lost');
+        } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+          if (state === 'failed') {
+            setError('Connection lost');
+          }
           cleanup();
         }
       };
-
-    } catch (err: any) {
-      setError(err.message || 'Failed to start call');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to start call';
+      setError(message);
       cleanup();
     }
   }, [cleanup]);
-
-  const handleRealtimeEvent = useCallback((event: any) => {
-    const type = event.type;
-
-    // Input audio transcription (what the user said)
-    if (type === 'conversation.item.input_audio_transcription.completed') {
-      const text = event.transcript?.trim();
-      if (text) {
-        setTranscript(prev => [...prev, { role: 'user', text, timestamp: Date.now() }]);
-      }
-    }
-
-    // Assistant audio transcript delta (streaming)
-    if (type === 'response.audio_transcript.delta') {
-      currentAssistantTranscriptRef.current += event.delta || '';
-    }
-
-    // Assistant audio transcript done
-    if (type === 'response.audio_transcript.done') {
-      const text = (event.transcript || currentAssistantTranscriptRef.current).trim();
-      if (text) {
-        setTranscript(prev => [...prev, { role: 'assistant', text, timestamp: Date.now() }]);
-      }
-      currentAssistantTranscriptRef.current = '';
-    }
-
-    // Response completed
-    if (type === 'response.done') {
-      // If we have accumulated assistant text that wasn't flushed
-      if (currentAssistantTranscriptRef.current.trim()) {
-        const text = currentAssistantTranscriptRef.current.trim();
-        setTranscript(prev => [...prev, { role: 'assistant', text, timestamp: Date.now() }]);
-        currentAssistantTranscriptRef.current = '';
-      }
-    }
-
-    // Error handling
-    if (type === 'error') {
-      console.error('[Realtime] Error:', event.error);
-      setError(event.error?.message || 'Realtime API error');
-    }
-  }, []);
 
   const endCall = useCallback(() => {
     cleanup();
