@@ -54,11 +54,16 @@ export function VoiceFeedbackModal({
     setShowSummary(true);
   };
 
-  const handleConfirm = async (confirmedIds: number[], rejectedIds: number[]) => {
+  const handleConfirm = async (
+    confirmedIds: number[],
+    rejectedIds: number[],
+    edits?: { id: number; content?: string; highlighted_text?: string }[],
+  ) => {
     await confirmFeedbackMutation.mutateAsync({
       sessionId: session.id,
       confirmedIds,
       rejectedIds,
+      edits,
     });
     onConfirmed();
     onClose();

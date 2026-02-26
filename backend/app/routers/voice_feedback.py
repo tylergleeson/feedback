@@ -330,6 +330,15 @@ async def confirm_feedback(
 
     feedback_session = voice_session.feedback_session
 
+    # Apply edits before processing
+    for edit in request.edits:
+        item = next((i for i in voice_session.extracted_feedback if i.id == edit.id), None)
+        if item:
+            if edit.content is not None:
+                item.content = edit.content
+            if edit.highlighted_text is not None:
+                item.highlighted_text = edit.highlighted_text
+
     # Mark rejected items
     for item_id in request.rejected_ids:
         item = next((item for item in voice_session.extracted_feedback if item.id == item_id), None)

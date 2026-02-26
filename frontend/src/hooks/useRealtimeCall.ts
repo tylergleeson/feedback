@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-interface TranscriptEntry {
+export interface TranscriptEntry {
   role: 'user' | 'assistant';
   text: string;
   timestamp: number;
@@ -9,19 +9,24 @@ interface TranscriptEntry {
 interface UseRealtimeCallReturn {
   startCall: (poemId: number) => Promise<void>;
   endCall: () => void;
+  clearTranscript: () => void;
   isConnected: boolean;
   isConnecting: boolean;
+  callEnded: boolean;
   error: string | null;
   transcript: TranscriptEntry[];
   callDuration: number;
+  userSpeaking: boolean;
 }
 
 export function useRealtimeCall(): UseRealtimeCallReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [callEnded, setCallEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [callDuration, setCallDuration] = useState(0);
+  const [userSpeaking, setUserSpeaking] = useState(false);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -37,7 +42,7 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
   // Accumulated assistant transcript between delta/done events
   const assistantBufferRef = useRef<string>('');
 
-  // Duration timer
+  // Duration timer — keep final value when call ends
   useEffect(() => {
     if (isConnected) {
       startTimeRef.current = Date.now();
@@ -49,7 +54,7 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
-      setCallDuration(0);
+      // Don't reset callDuration — preserve the final value
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -75,6 +80,7 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
     }
     setIsConnected(false);
     setIsConnecting(false);
+    setCallEnded(true);
   }, []);
 
   // Cleanup on unmount to prevent leaked connections/mic streams
@@ -89,6 +95,14 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
     const evt = event as Record<string, unknown>;
     const type = evt.type as string | undefined;
     if (!type) return;
+
+    // VAD events — live speaking indicator
+    if (type === 'input_audio_buffer.speech_started') {
+      setUserSpeaking(true);
+    }
+    if (type === 'input_audio_buffer.speech_stopped') {
+      setUserSpeaking(false);
+    }
 
     // User finished speaking — transcription result
     if (type === 'conversation.item.input_audio_transcription.completed') {
@@ -133,6 +147,8 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
   const startCall = useCallback(async (poemId: number) => {
     setError(null);
     setIsConnecting(true);
+    setCallEnded(false);
+    setCallDuration(0);
     setTranscript([]);
     assistantBufferRef.current = '';
 
@@ -212,13 +228,22 @@ export function useRealtimeCall(): UseRealtimeCallReturn {
     cleanup();
   }, [cleanup]);
 
+  const clearTranscript = useCallback(() => {
+    setTranscript([]);
+    setCallEnded(false);
+    setCallDuration(0);
+  }, []);
+
   return {
     startCall,
     endCall,
+    clearTranscript,
     isConnected,
     isConnecting,
+    callEnded,
     error,
     transcript,
     callDuration,
+    userSpeaking,
   };
 }

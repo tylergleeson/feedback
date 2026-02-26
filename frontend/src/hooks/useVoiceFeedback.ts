@@ -99,10 +99,12 @@ export function useConfirmFeedback() {
       sessionId,
       confirmedIds,
       rejectedIds,
+      edits,
     }: {
       sessionId: number;
       confirmedIds: number[];
       rejectedIds: number[];
+      edits?: { id: number; content?: string; highlighted_text?: string }[];
     }) => {
       const res = await fetch(`${API_BASE}/${sessionId}/confirm`, {
         method: 'POST',
@@ -110,6 +112,7 @@ export function useConfirmFeedback() {
         body: JSON.stringify({
           confirmed_ids: confirmedIds,
           rejected_ids: rejectedIds,
+          edits: edits || [],
         }),
       });
       if (!res.ok) throw new Error('Failed to confirm feedback');
@@ -119,6 +122,37 @@ export function useConfirmFeedback() {
       // Invalidate both voice session and feedback session
       queryClient.invalidateQueries({ queryKey: ['voiceSession'] });
       queryClient.invalidateQueries({ queryKey: ['feedback', data.feedback_session_id] });
+    },
+  });
+}
+
+export function useSaveRealtimeTranscript() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      poemId,
+      transcript,
+    }: {
+      poemId: number;
+      transcript: { role: string; text: string; timestamp: number }[];
+    }) => {
+      const res = await fetch('/api/realtime/save-transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          poem_id: poemId,
+          transcript,
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to save transcript');
+      }
+      return res.json() as Promise<VoiceFeedbackSession>;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['poems', variables.poemId] });
     },
   });
 }

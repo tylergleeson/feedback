@@ -13,10 +13,12 @@ import {
 import {
   useStartVoiceFeedback,
   useVoiceSession,
+  useSaveRealtimeTranscript,
+  useConfirmFeedback,
 } from '../hooks/useVoiceFeedback';
 import PoemDisplay from '../components/PoemDisplay';
 import FeedbackSidebar from '../components/FeedbackSidebar';
-import { VoiceFeedbackButton, VoiceFeedbackModal } from '../components/VoiceFeedback';
+import { VoiceFeedbackButton, VoiceFeedbackModal, FeedbackSummary } from '../components/VoiceFeedback';
 import { RealtimeCallButton, RealtimeCallModal } from '../components/RealtimeCall';
 import { useRealtimeCall } from '../hooks/useRealtimeCall';
 import type { FeedbackSession, VoiceFeedbackSession } from '../types';
@@ -39,7 +41,13 @@ export default function PoemReview() {
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
 
+  // Realtime call state
+  const [realtimeVoiceSession, setRealtimeVoiceSession] = useState<VoiceFeedbackSession | null>(null);
+  const [showRealtimeSummary, setShowRealtimeSummary] = useState(false);
+
   const realtimeCall = useRealtimeCall();
+  const saveTranscript = useSaveRealtimeTranscript();
+  const confirmFeedback = useConfirmFeedback();
 
   const { data: sessionData, refetch: refetchSession } = useFeedbackSession(
     activeSession?.id || 0
@@ -172,7 +180,6 @@ export default function PoemReview() {
   };
 
   const handleVoiceFeedbackConfirmed = () => {
-    // Refresh the session data to show the confirmed feedback
     refetchSession();
   };
 
@@ -180,6 +187,7 @@ export default function PoemReview() {
     setShowVoiceModal(false);
   };
 
+  // Realtime call handlers
   const handleStartCall = async () => {
     setShowCallModal(true);
     await realtimeCall.startCall(poemId);
@@ -187,7 +195,63 @@ export default function PoemReview() {
 
   const handleEndCall = () => {
     realtimeCall.endCall();
+    // Don't close widget — let user decide to save or dismiss
+  };
+
+  const handleSaveTranscript = async () => {
+    try {
+      const session = await saveTranscript.mutateAsync({
+        poemId,
+        transcript: realtimeCall.transcript,
+      });
+      setRealtimeVoiceSession(session);
+      setActiveSession({
+        id: session.feedback_session_id,
+        poem_id: poemId,
+        overall_feedback: null,
+        rating: null,
+        status: 'in_progress',
+        created_at: session.created_at,
+        comments: [],
+      });
+      setShowCallModal(false);
+      realtimeCall.clearTranscript();
+      setShowRealtimeSummary(true);
+    } catch (error) {
+      console.error('Failed to save transcript:', error);
+    }
+  };
+
+  const handleDismissCall = () => {
+    realtimeCall.clearTranscript();
     setShowCallModal(false);
+  };
+
+  const handleRealtimeConfirm = async (
+    confirmedIds: number[],
+    rejectedIds: number[],
+    edits?: { id: number; content?: string; highlighted_text?: string }[],
+  ) => {
+    if (!realtimeVoiceSession) return;
+
+    try {
+      await confirmFeedback.mutateAsync({
+        sessionId: realtimeVoiceSession.id,
+        confirmedIds,
+        rejectedIds,
+        edits,
+      });
+      setShowRealtimeSummary(false);
+      setRealtimeVoiceSession(null);
+      refetchSession();
+    } catch (error) {
+      console.error('Failed to confirm feedback:', error);
+    }
+  };
+
+  const handleRealtimeSummaryBack = () => {
+    setShowRealtimeSummary(false);
+    setRealtimeVoiceSession(null);
   };
 
   if (poemLoading) {
@@ -268,14 +332,32 @@ export default function PoemReview() {
 
       <RealtimeCallModal
         isOpen={showCallModal}
-        poemContent={poem?.content || ''}
         isConnected={realtimeCall.isConnected}
         isConnecting={realtimeCall.isConnecting}
+        callEnded={realtimeCall.callEnded}
         error={realtimeCall.error}
         transcript={realtimeCall.transcript}
         callDuration={realtimeCall.callDuration}
+        isSaving={saveTranscript.isPending}
+        userSpeaking={realtimeCall.userSpeaking}
         onEndCall={handleEndCall}
+        onSaveTranscript={handleSaveTranscript}
+        onDismiss={handleDismissCall}
       />
+
+      {/* Realtime feedback summary modal */}
+      {showRealtimeSummary && realtimeVoiceSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <FeedbackSummary
+              extractedFeedback={realtimeVoiceSession.extracted_feedback}
+              onConfirm={handleRealtimeConfirm}
+              onBack={handleRealtimeSummaryBack}
+              isConfirming={confirmFeedback.isPending}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

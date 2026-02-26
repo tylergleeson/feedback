@@ -1,9 +1,18 @@
 import { useState, useEffect } from 'react';
 import type { ExtractedFeedback, FeedbackType } from '../../types';
 
+interface FeedbackItemEditData {
+  content: string;
+  highlighted_text?: string;
+}
+
 interface FeedbackSummaryProps {
   extractedFeedback: ExtractedFeedback[];
-  onConfirm: (confirmedIds: number[], rejectedIds: number[]) => void;
+  onConfirm: (
+    confirmedIds: number[],
+    rejectedIds: number[],
+    edits?: { id: number; content?: string; highlighted_text?: string }[],
+  ) => void;
   onBack: () => void;
   isConfirming: boolean;
 }
@@ -16,6 +25,8 @@ export function FeedbackSummary({
 }: FeedbackSummaryProps) {
   // State: item ID -> checked status
   const [checkedItems, setCheckedItems] = useState<Record<number, boolean>>({});
+  const [editedItems, setEditedItems] = useState<Record<number, FeedbackItemEditData>>({});
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // Initialize all items as checked
   useEffect(() => {
@@ -33,6 +44,33 @@ export function FeedbackSummary({
     }));
   };
 
+  const handleStartEdit = (item: ExtractedFeedback) => {
+    if (editingId === item.id) {
+      setEditingId(null);
+      return;
+    }
+    setEditingId(item.id);
+    if (!editedItems[item.id]) {
+      setEditedItems((prev) => ({
+        ...prev,
+        [item.id]: {
+          content: item.content,
+          highlighted_text: item.highlighted_text || undefined,
+        },
+      }));
+    }
+  };
+
+  const handleEditChange = (itemId: number, field: keyof FeedbackItemEditData, value: string) => {
+    setEditedItems((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        [field]: value,
+      },
+    }));
+  };
+
   const handleConfirm = () => {
     const confirmed: number[] = [];
     const rejected: number[] = [];
@@ -45,7 +83,13 @@ export function FeedbackSummary({
       }
     });
 
-    onConfirm(confirmed, rejected);
+    const edits = Object.entries(editedItems).map(([id, data]) => ({
+      id: Number(id),
+      content: data.content,
+      highlighted_text: data.highlighted_text,
+    }));
+
+    onConfirm(confirmed, rejected, edits.length > 0 ? edits : undefined);
   };
 
   const groupByType = (type: FeedbackType) =>
@@ -58,56 +102,115 @@ export function FeedbackSummary({
 
   const confirmedCount = Object.values(checkedItems).filter(Boolean).length;
 
-  const renderFeedbackItem = (item: ExtractedFeedback) => (
-    <label
-      key={item.id}
-      style={{
-        display: 'flex',
-        gap: '12px',
-        padding: '12px',
-        backgroundColor: checkedItems[item.id] ? '#f0fdf4' : '#fef2f2',
-        border: `2px solid ${checkedItems[item.id] ? '#22c55e' : '#ef4444'}`,
-        borderRadius: '8px',
-        cursor: 'pointer',
-        transition: 'all 0.2s ease',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateX(4px)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'translateX(0)';
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={checkedItems[item.id] || false}
-        onChange={() => handleToggle(item.id)}
+  const renderFeedbackItem = (item: ExtractedFeedback) => {
+    const isEditing = editingId === item.id;
+    const edited = editedItems[item.id];
+    const displayContent = edited?.content ?? item.content;
+    const displayHighlight = edited?.highlighted_text ?? item.highlighted_text;
+
+    return (
+      <div
+        key={item.id}
         style={{
-          width: '20px',
-          height: '20px',
-          cursor: 'pointer',
-          accentColor: '#7c3aed',
+          display: 'flex',
+          gap: '12px',
+          padding: '12px',
+          backgroundColor: checkedItems[item.id] ? '#f0fdf4' : '#fef2f2',
+          border: `2px solid ${checkedItems[item.id] ? '#22c55e' : '#ef4444'}`,
+          borderRadius: '8px',
+          transition: 'all 0.2s ease',
         }}
-      />
-      <div style={{ flex: 1 }}>
-        {item.highlighted_text && (
-          <div
-            style={{
-              fontWeight: '700',
-              marginBottom: '4px',
-              color: '#1f2937',
-            }}
-          >
-            "{item.highlighted_text}"
+      >
+        <input
+          type="checkbox"
+          checked={checkedItems[item.id] || false}
+          onChange={() => handleToggle(item.id)}
+          style={{
+            width: '20px',
+            height: '20px',
+            cursor: 'pointer',
+            accentColor: '#7c3aed',
+            marginTop: '2px',
+          }}
+        />
+        <div style={{ flex: 1 }}>
+          {isEditing ? (
+            <>
+              {item.feedback_type === 'inline_comment' && (
+                <input
+                  type="text"
+                  value={edited?.highlighted_text ?? item.highlighted_text ?? ''}
+                  onChange={(e) => handleEditChange(item.id, 'highlighted_text', e.target.value)}
+                  placeholder="Highlighted text"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    marginBottom: '8px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: '700',
+                    color: '#1f2937',
+                  }}
+                />
+              )}
+              <textarea
+                value={edited?.content ?? item.content}
+                onChange={(e) => handleEditChange(item.id, 'content', e.target.value)}
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  color: '#374151',
+                  resize: 'vertical',
+                }}
+              />
+            </>
+          ) : (
+            <>
+              {displayHighlight && (
+                <div
+                  style={{
+                    fontWeight: '700',
+                    marginBottom: '4px',
+                    color: '#1f2937',
+                  }}
+                >
+                  &ldquo;{displayHighlight}&rdquo;
+                </div>
+              )}
+              <div style={{ color: '#374151', marginBottom: '4px' }}>{displayContent}</div>
+            </>
+          )}
+          <div style={{ fontSize: '12px', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            Confidence: {Math.round(item.confidence * 100)}%
+            {edited && !isEditing && (
+              <span style={{ color: '#7c3aed', fontWeight: 600 }}>edited</span>
+            )}
           </div>
-        )}
-        <div style={{ color: '#374151', marginBottom: '4px' }}>{item.content}</div>
-        <div style={{ fontSize: '12px', color: '#9ca3af' }}>
-          Confidence: {Math.round(item.confidence * 100)}%
         </div>
+        <button
+          onClick={() => handleStartEdit(item)}
+          title={isEditing ? 'Done editing' : 'Edit'}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '4px',
+            color: isEditing ? '#7c3aed' : '#9ca3af',
+            fontSize: '16px',
+            lineHeight: 1,
+            alignSelf: 'flex-start',
+          }}
+        >
+          {isEditing ? '✓' : '✏️'}
+        </button>
       </div>
-    </label>
-  );
+    );
+  };
 
   const renderSection = (title: string, items: ExtractedFeedback[], emoji: string) => {
     if (items.length === 0) return null;

@@ -167,6 +167,105 @@ Based on this exchange, extract any feedback items and formulate your next quest
                 "is_complete": False
             }
 
+    async def extract_all_feedback(self) -> Dict:
+        """
+        Process the entire conversation history at once and extract all feedback items.
+        Used for realtime call transcripts where extraction happens post-call.
+
+        Returns:
+            Dict with key "extracted_items": list of feedback items
+        """
+        if not self.conversation_history:
+            return {"extracted_items": []}
+
+        # Use mock if no API key
+        if settings.use_mock_ai or not settings.openai_api_key or not HAS_OPENAI:
+            from app.services.mock_ai_interviewer import generate_mock_extraction
+            return await generate_mock_extraction(self.conversation_history, self.poem_content)
+
+        conversation_text = "\n".join([
+            f"{'SME' if msg['role'] == 'sme' else 'AI'}: {msg['content']}"
+            for msg in self.conversation_history
+        ])
+
+        system_prompt = f"""You are an expert poetry editor. You have just finished a voice feedback session with a Subject Matter Expert (SME). Your task is to extract ALL structured feedback items from the complete conversation transcript.
+
+## The Poem Being Reviewed:
+{self.poem_content}
+
+## The Poetry Guide:
+{self.guide_content}
+
+## Extraction Rules:
+Extract feedback items in these categories:
+
+1. **inline_comment**: Specific critique of a section of the poem
+   - Extract the EXACT text from the poem they're referring to
+   - Calculate start_offset and end_offset (character positions in poem text)
+   - Include their comment/critique
+
+2. **overall**: General observations about the whole poem
+   - Synthesize their overall impressions
+
+3. **guide_suggestion**: New rules to add to the guide
+   - Extract as specific rules (e.g., "Never use the word 'heartbeat'")
+
+4. **rating**: Numeric rating (1-5)
+   - Only extract if they give a clear numeric rating
+
+## CRITICAL: Text Offset Calculation
+When extracting inline comments:
+- Find the EXACT highlighted_text in the poem
+- Calculate start_offset: number of characters from start of poem to start of highlighted text
+- Calculate end_offset: start_offset + length of highlighted text
+- If you can't find exact match, try case-insensitive
+- If still no match, set offsets to null
+
+## Complete Conversation Transcript:
+{conversation_text}
+
+## Response Format:
+You MUST respond with ONLY valid JSON (no markdown code blocks):
+{{
+    "extracted_items": [
+        {{
+            "feedback_type": "inline_comment|overall|guide_suggestion|rating",
+            "content": "The feedback content or comment",
+            "highlighted_text": "exact text from poem (inline_comment only)",
+            "start_offset": 123,
+            "end_offset": 145,
+            "confidence": 0.9
+        }}
+    ]
+}}
+
+Extract every piece of actionable feedback from the conversation. Be thorough."""
+
+        try:
+            client = OpenAI(api_key=settings.openai_api_key)
+
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt}
+                ],
+                max_tokens=4096,
+                temperature=0.3
+            )
+
+            response_text = response.choices[0].message.content
+            result = self._parse_json_response(response_text)
+
+            # Ensure we have the right structure
+            if "extracted_items" not in result:
+                result = {"extracted_items": result.get("extracted_items", [])}
+
+            return {"extracted_items": result.get("extracted_items", [])}
+
+        except Exception as e:
+            print(f"AI Interviewer extraction error: {e}")
+            return {"extracted_items": []}
+
     async def generate_summary(self, all_extracted_items: List[Dict]) -> str:
         """Generate a summary of all extracted feedback."""
 

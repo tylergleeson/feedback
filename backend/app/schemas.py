@@ -155,9 +155,28 @@ class VoiceMessageRequest(BaseModel):
     text: Optional[str] = None
 
 
+class FeedbackItemEdit(BaseModel):
+    id: int
+    content: Optional[str] = None
+    highlighted_text: Optional[str] = None
+
+
 class ConfirmFeedbackRequest(BaseModel):
     confirmed_ids: List[int]
     rejected_ids: List[int]
+    edits: List[FeedbackItemEdit] = []
+
+
+# Realtime transcript schemas
+class RealtimeTranscriptMessage(BaseModel):
+    role: str  # 'user' or 'assistant'
+    text: str
+    timestamp: Optional[float] = None
+
+
+class SaveRealtimeTranscriptRequest(BaseModel):
+    poem_id: int
+    transcript: List[RealtimeTranscriptMessage]
 
 
 # Update forward references

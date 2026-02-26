@@ -3,6 +3,46 @@
 from typing import List, Dict
 
 
+async def generate_mock_extraction(
+    conversation_history: List[Dict[str, str]],
+    poem_content: str
+) -> Dict:
+    """
+    Generate mock extraction results for a completed conversation transcript.
+    Returns extracted feedback items based on conversation content.
+    """
+    items = []
+
+    # Extract first line for an inline comment
+    first_line = poem_content.split('\n')[0] if poem_content else "sample text"
+    items.append({
+        "feedback_type": "inline_comment",
+        "content": "[Mock] This opening line could use stronger imagery",
+        "highlighted_text": first_line,
+        "start_offset": 0,
+        "end_offset": len(first_line),
+        "confidence": 0.85
+    })
+
+    # Add an overall observation
+    items.append({
+        "feedback_type": "overall",
+        "content": "[Mock] The poem has good structure but could benefit from more vivid language throughout",
+        "confidence": 0.8
+    })
+
+    # Add a guide suggestion if enough conversation happened
+    sme_messages = [msg for msg in conversation_history if msg["role"] == "sme"]
+    if len(sme_messages) >= 2:
+        items.append({
+            "feedback_type": "guide_suggestion",
+            "content": "[Mock] Avoid passive voice in opening stanzas",
+            "confidence": 0.75
+        })
+
+    return {"extracted_items": items}
+
+
 async def generate_mock_response(
     sme_message: str,
     conversation_history: List[Dict[str, str]],
